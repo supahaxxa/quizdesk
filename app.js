@@ -227,7 +227,7 @@
     container.innerHTML = state.activeQuestions.map((question, index) => `
       <article class="student-question-card" data-question-card="${escapeHtml(question.id)}">
         <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${index + 1} / ${state.activeQuestions.length}</span></div>
-        <h3>${escapeHtml(question.question_text)}</h3>
+        <h3><pre>${escapeHtml(question.question_text)}</pre></h3>
         <div class="student-options">
           ${(question.options || []).map((option, optionIndex) => `
             <label class="student-option">
@@ -547,7 +547,7 @@
       return `
         <article class="review-answer">
           <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${submitted?.is_correct ? 'Correct' : 'Incorrect'}</span></div>
-          <h3>${escapeHtml(question.question_text)}</h3>
+          <h3><pre>${escapeHtml(question.question_text)}</pre></h3>
           ${(question.options || []).map((option, optionIndex) => {
             const isCorrect = optionIndex === correctIndex;
             const isChosen = optionIndex === submitted?.selected_option_index;
