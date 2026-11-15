@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="QuizDesk - a simple student quiz portal and teacher quiz management dashboard.">
+  <meta name="theme-color" content="#173f35">
+  <title>QuizDesk — Quiz Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="QuizDesk home">
+        <span class="brand-mark">Q</span>
+        <span>Quiz<span class="brand-light">Desk</span></span>
+      </a>
+      <div class="topbar-right">
+        <span class="connection-indicator"><span class="status-dot" id="connection-dot"></span><span id="connection-text">Connecting</span></span>
+        <button class="button button-quiet button-small" id="teacher-nav-button" type="button">Teacher access <span aria-hidden="true">→</span></button>
+      </div>
+    </header>
+
+    <main id="app-main">
+      <section class="hero" id="home-view">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span> LEARN · PRACTISE · IMPROVE</div>
+          <h1>Make every<br><span>answer count.</span></h1>
+          <p class="hero-description">Choose a quiz, focus on your answers, and submit when you are ready. Your teacher will review your work afterwards.</p>
+          <div class="hero-actions">
+            <button class="button button-primary" id="browse-quizzes-button" type="button">Explore quizzes <span aria-hidden="true">↗</span></button>
+            <button class="text-button" id="hero-teacher-button" type="button">I'm a teacher <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="hero-footnote"><span class="tiny-check">✓</span> No instant right-or-wrong feedback during a quiz</div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="art-orbit orbit-one"></div>
+          <div class="art-orbit orbit-two"></div>
+          <div class="art-card art-card-back"><span class="art-card-label">YOUR PROGRESS</span><div class="fake-progress"><i></i></div><div class="fake-lines"><i></i><i></i></div></div>
+          <div class="art-card art-card-main">
+            <div class="art-card-top"><span class="art-card-label">QUICK CHECK</span><span class="art-pill">MCQ</span></div>
+            <div class="art-question">Which habit helps<br>you learn better?</div>
+            <div class="art-option"><span>A</span> Reviewing regularly</div>
+            <div class="art-option selected"><span>B</span> Practising consistently <b>✓</b></div>
+            <div class="art-option"><span>C</span> Skipping the basics</div>
+            <div class="art-art-footer"><span>YOUR PACE, YOUR FOCUS</span><span>↗</span></div>
+          </div>
+          <div class="art-sticker"><span>✦</span><br>KEEP<br>GOING</div>
+        </div>
+      </section>
+
+      <section class="content-section" id="quiz-section">
+        <div class="section-heading">
+          <div><div class="eyebrow"><span class="eyebrow-line"></span> STUDENT PORTAL</div><h2>Available quizzes</h2><p class="section-subtitle">Pick a quiz to see its details and get started.</p></div>
+          <button class="button button-outline button-small" id="refresh-quizzes-button" type="button">↻ Refresh</button>
+        </div>
+        <div id="quiz-list" class="quiz-grid" aria-live="polite"><div class="loading-card">Loading available quizzes…</div></div>
+      </section>
+
+      <section class="teacher-entry" id="teacher-entry">
+        <div class="teacher-entry-icon">✳</div>
+        <div><h3>Are you managing a class?</h3><p>Create quizzes, review submissions and check each student's answers from your teacher dashboard.</p></div>
+        <button class="button button-dark" id="teacher-entry-button" type="button">Open teacher portal <span aria-hidden="true">→</span></button>
+      </section>
+    </main>
+
+    <section id="teacher-view" class="page-view hidden">
+      <div class="page-heading">
+        <button class="back-link" id="teacher-home-button" type="button">← Back to student portal</button>
+        <div class="eyebrow"><span class="eyebrow-line"></span> TEACHER WORKSPACE</div>
+        <h1>Your classroom,<br><span>at a glance.</span></h1>
+        <p class="section-subtitle">Create assessments and review student attempts in one place.</p>
+      </div>
+      <div id="teacher-login-panel" class="login-card">
+        <div class="login-card-icon">⌘</div>
+        <h2>Teacher sign in</h2>
+        <p>Use the teacher account configured in your Supabase project.</p>
+        <form id="teacher-login-form" class="stack-form">
+          <label>Email address<input id="teacher-email" type="email" autocomplete="username" required placeholder="teacher@example.com"></label>
+          <label>Password<input id="teacher-password" type="password" autocomplete="current-password" required placeholder="Your password"></label>
+          <button class="button button-primary button-full" type="submit">Sign in <span aria-hidden="true">→</span></button>
+          <p class="form-message" id="login-message" role="status"></p>
+        </form>
+      </div>
+
+      <div id="teacher-dashboard" class="hidden">
+        <div class="dashboard-toolbar">
+          <div><div class="eyebrow"><span class="eyebrow-line"></span> DASHBOARD</div><h2>Welcome back</h2><p id="teacher-account-label" class="section-subtitle"></p></div>
+          <button class="button button-outline button-small" id="teacher-logout-button" type="button">Sign out</button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card"><span class="stat-label">TOTAL QUIZZES</span><strong id="stat-quizzes">—</strong><span class="stat-note">Created by you</span></div>
+          <div class="stat-card"><span class="stat-label">PUBLISHED</span><strong id="stat-published">—</strong><span class="stat-note">Visible to students</span></div>
+          <div class="stat-card"><span class="stat-label">SUBMISSIONS</span><strong id="stat-submissions">—</strong><span class="stat-note">Attempts received</span></div>
+        </div>
+        <div class="dashboard-columns">
+          <section class="dashboard-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">ASSESSMENTS</span><h3>Your quizzes</h3></div><button class="button button-primary button-small" id="open-create-quiz-button" type="button">＋ Create quiz</button></div>
+            <div id="teacher-quiz-list" class="teacher-quiz-list"><div class="loading-card">Loading your quizzes…</div></div>
+          </section>
+          <section class="dashboard-panel submissions-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">STUDENT WORK</span><h3>Recent submissions</h3></div><button class="icon-button" id="refresh-submissions-button" type="button" aria-label="Refresh submissions">↻</button></div>
+            <div id="teacher-submission-list" class="submission-list"><div class="loading-card">Loading submissions…</div></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="create-quiz-view" class="page-view hidden">
+      <button class="back-link" id="create-back-button" type="button">← Back to dashboard</button>
+      <div class="eyebrow"><span class="eyebrow-line"></span> NEW ASSESSMENT</div>
+      <h1 class="subpage-title">Build a <span>new quiz.</span></h1>
+      <p class="section-subtitle">Add your questions and choose the correct option. Students will not see the answer key.</p>
+      <form id="create-quiz-form">
+        <div class="form-card">
+          <div class="form-card-heading"><span class="step-number">01</span><div><h3>Quiz details</h3><p>Give your assessment a clear title.</p></div></div>
+          <div class="field-grid"><label>Quiz title<input id="quiz-title" type="text" maxlength="100" required placeholder="e.g. Chapter 03 — Algebra"></label><label class="field-span">Description <span class="optional-label">Optional</span><textarea id="quiz-description" rows="3" maxlength="500" placeholder="A short note about this quiz…"></textarea></label></div>
+          <label class="publish-toggle"><input id="quiz-publish" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Publish immediately</strong><small>Students can see and start this quiz as soon as it is saved.</small></span></label>
+        </div>
+        <div class="form-card questions-form-card">
+          <div class="form-card-heading"><span class="step-number">02</span><div><h3>Questions</h3><p>Add multiple-choice questions and set their answer keys.</p></div><span class="question-count" id="question-count">1 question</span></div>
+          <div id="question-builder"></div>
+          <button class="button button-outline add-question-button" id="add-question-button" type="button">＋ Add another question</button>
+        </div>
+        <div class="form-actions"><p class="form-message" id="create-quiz-message" role="status"></p><button class="button button-primary" id="save-quiz-button" type="submit">Save quiz <span aria-hidden="true">→</span></button></div>
+      </form>
+    </section>
+
+    <section id="take-quiz-view" class="page-view hidden">
+      <button class="back-link" id="quiz-back-button" type="button">← Back to available quizzes</button>
+      <div class="quiz-intro" id="quiz-intro"></div>
+      <div id="student-details-card" class="form-card student-details-card">
+        <div class="form-card-heading"><span class="step-number">01</span><div><h3>Before you begin</h3><p>Enter your details so your teacher can identify your submission.</p></div></div>
+        <form id="start-quiz-form" class="field-grid">
+          <label>Full name<input id="student-name" type="text" maxlength="100" required placeholder="Your full name"></label>
+          <label>Student ID<input id="student-code" type="text" maxlength="60" required placeholder="Your student ID"></label>
+          <label class="field-span">Email or phone <span class="optional-label">Optional</span><input id="student-contact" type="text" maxlength="120" placeholder="How your teacher can contact you"></label>
+          <div class="field-span start-quiz-action"><p class="privacy-note">Your details and answers will be shared with your teacher for assessment purposes.</p><button class="button button-primary" type="submit">Start quiz <span aria-hidden="true">→</span></button></div>
+        </form>
+      </div>
+      <div id="quiz-taking-area" class="hidden">
+        <div class="quiz-progress-header"><div><span class="panel-kicker">YOUR ASSESSMENT</span><strong id="question-progress-label">Question 1 of 1</strong></div><div class="timer-box"><span class="timer-icon">◷</span><span id="quiz-timer">00:00</span><small>ELAPSED</small></div></div>
+        <div class="progress-track"><i id="quiz-progress-bar"></i></div>
+        <form id="student-answer-form"><div id="student-question-list"></div><div class="quiz-submit-row"><p class="privacy-note">Your answers are not marked on screen. You can review them before submitting.</p><button class="button button-primary" id="submit-quiz-button" type="submit">Submit quiz <span aria-hidden="true">→</span></button></div></form>
+      </div>
+    </section>
+
+    <section id="submission-detail-view" class="page-view hidden">
+      <button class="back-link" id="detail-back-button" type="button">← Back to dashboard</button>
+      <div id="submission-detail-content"><div class="loading-card">Loading submission…</div></div>
+    </section>
+
+    <section id="submitted-view" class="page-view hidden">
+      <div class="success-card">
+        <div class="success-icon">✓</div><div class="eyebrow centered-eyebrow">SUBMISSION RECEIVED</div>
+        <h1>Well <span>done.</span></h1>
+        <p>Your answers have been submitted successfully. Your teacher can now review your work. No score or answer feedback is shown here.</p>
+        <div class="submitted-meta" id="submitted-meta"></div>
+        <button class="button button-primary" id="return-home-button" type="button">Return to quizzes <span aria-hidden="true">→</span></button>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <footer class="site-footer"><span>© <span id="current-year"></span> QuizDesk</span><span>Focused practice. Thoughtful feedback.</span></footer>
+</body>
+</html>
