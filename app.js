@@ -227,7 +227,7 @@
     container.innerHTML = state.activeQuestions.map((question, index) => `
       <article class="student-question-card" data-question-card="${escapeHtml(question.id)}">
         <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${index + 1} / ${state.activeQuestions.length}</span></div>
-        <h3><pre>${escapeHtml(question.question_text)}</pre></h3>
+        <h3>${escapeHtml(question.question_text)}</h3>
         <div class="student-options">
           ${(question.options || []).map((option, optionIndex) => `
             <label class="student-option">
@@ -453,7 +453,7 @@
       <div class="question-editor-head"><strong>Question ${index + 1}</strong><button type="button" class="remove-question" data-remove-question="${index}" ${index === 0 ? 'disabled' : ''}>Remove</button></div>
       <label class="question-text-field">Question text<textarea rows="2" maxlength="2000" data-question-text required placeholder="Write your question here…"></textarea></label>
       <div class="options-grid">
-        ${LETTERS.slice(0, 4).map((letter, optionIndex) => `<label class="option-editor"><span class="option-letter">${letter}</span><input type="text" maxlength="500" data-option-index="${optionIndex}" required placeholder="Option ${letter}"></label>`).join('')}
+        ${LETTERS.slice(0, 4).map((letter, optionIndex) => `<label class="option-editor"><span class="option-letter">${letter}</span><textarea rows="2" maxlength="500" data-option-index="${optionIndex}" required placeholder="Option ${letter}"></textarea></label>`).join('')}
       </div>
       <label class="correct-answer-field">Correct answer<select data-correct-index>${LETTERS.slice(0, 4).map((letter, optionIndex) => `<option value="${optionIndex}">${letter}</option>`).join('')}</select></label>`;
     $('question-builder').appendChild(editor);
@@ -480,9 +480,11 @@
 
     for (let index = 0; index < questionEditors.length; index += 1) {
       const editor = questionEditors[index];
-      const questionText = editor.querySelector('[data-question-text]').value.trim();
-      const options = [...editor.querySelectorAll('[data-option-index]')].map((input) => input.value.trim());
-      if (!questionText || options.some((option) => !option)) {
+      // Keep user-entered spaces and line breaks. Normalize Windows line endings only.
+      const questionText = editor.querySelector('[data-question-text]').value.replace(/\r\n?/g, '\n');
+      const options = [...editor.querySelectorAll('[data-option-index]')]
+        .map((field) => field.value.replace(/\r\n?/g, '\n'));
+      if (!questionText.trim() || options.some((option) => !option.trim())) {
         setMessage('create-quiz-message', `Please complete the question and all four options for Question ${index + 1}.`);
         editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
@@ -547,7 +549,7 @@
       return `
         <article class="review-answer">
           <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${submitted?.is_correct ? 'Correct' : 'Incorrect'}</span></div>
-          <h3><pre>${escapeHtml(question.question_text)}</pre></h3>
+          <h3>${escapeHtml(question.question_text)}</h3>
           ${(question.options || []).map((option, optionIndex) => {
             const isCorrect = optionIndex === correctIndex;
             const isChosen = optionIndex === submitted?.selected_option_index;
