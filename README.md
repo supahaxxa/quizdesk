@@ -1,74 +1,72 @@
-# QuizDesk — GitHub Pages + Supabase
+# QuizDesk — GitHub Pages + Supabase (v2)
 
-QuizDesk is a static, responsive multiple-choice quiz application. The website itself is plain HTML, CSS and JavaScript, so it can be hosted on **GitHub Pages**. Supabase provides the shared PostgreSQL database and teacher authentication.
+QuizDesk is a static, responsive multiple-choice quiz application. The website is plain HTML, CSS and JavaScript and can be hosted on **GitHub Pages**. Supabase provides the shared PostgreSQL database, teacher authentication and question-image storage.
 
-> **Why Supabase is included:** GitHub Pages serves static files. It does not run a Python/Flask server or provide a shared database. The Supabase project stores quizzes, private answer keys, student attempts, answers and results. Students on different devices therefore see the same published quizzes.
+## What's new in v2
 
-## Features
+- **Edit existing quizzes:** use the Edit button beside any quiz in the teacher dashboard.
+- **Reorder questions:** move questions up or down while creating or editing. The saved order is the displayed order for students.
+- **Add question images:** upload JPG, PNG, WEBP or GIF images (up to 5 MB). The image appears above the question text. Text-only questions have no image placeholder. Image-only questions are supported too.
+- **Submission history is preserved:** every edit creates a new immutable quiz revision. Attempts already started/submitted remain attached to the earlier revision, including its original question wording, image, options and answer key.
+- **Formatting is preserved:** line breaks and repeated spaces in question and option text are retained.
 
-### Student portal
-- Browse published quizzes.
-- Enter a name, student ID and optional email/phone contact.
-- Answer multiple-choice questions.
-- See selected answers but receive no correct/incorrect feedback or score.
-- Submit once and receive a confirmation without a score.
-- Have elapsed time calculated from a server-side start timestamp.
+## Architecture
 
-### Teacher portal
-- Sign in using a Supabase Auth email/password account.
-- Create quizzes with four options per question and choose the correct option.
-- Save a quiz as a draft or publish it immediately.
-- Publish/unpublish or delete quizzes. A quiz with student attempts cannot be deleted; unpublish it to preserve the submission history.
-- Review submissions, student contact details, elapsed time, scores and each selected/correct answer.
+- GitHub Pages serves `index.html`, `styles.css`, `app.js` and `config.js`.
+- Supabase Auth handles teacher login.
+- Supabase PostgreSQL stores quizzes, question revisions, private answer keys, student attempts and results.
+- Supabase Storage stores uploaded question images in a public bucket. Images are intended to be part of assessments visible to students, so their public URLs can be loaded by the student page. Only authenticated teacher accounts can upload, update or delete files through the Storage API.
 
-### Data protection
-- Correct answers are stored in a separate `answer_keys` table. Anonymous student access has no permission to read that table.
-- Student answers and results are readable only by authenticated teachers who own the quiz.
-- Students submit answers through a PostgreSQL function. The function grades the answers server-side and returns only `{ "submitted": true }`, not the score or answer key.
-- Start time and elapsed time are recorded/calculated by PostgreSQL, not trusted from the student's browser.
-- The browser uses only the Supabase publishable/anon key. Never put a Supabase `service_role` or secret key in website JavaScript.
+GitHub Pages alone cannot securely store shared quiz data or run a backend. The Supabase project is required for multiple students/devices to share quiz data.
 
-## Files
+## Project files
 
 ```text
-quizdesk-github/
-├── index.html            # All page structure and views
-├── styles.css            # Responsive site styling
-├── app.js                # Browser logic and Supabase calls
-├── config.js             # Supabase project URL + public key (edit this)
-├── supabase-schema.sql   # Tables, access policies and database functions
-├── .nojekyll             # Prevents GitHub Pages/Jekyll processing
+quizdesk/
+├── index.html                 # Website structure and student/teacher views
+├── styles.css                 # Responsive styling
+├── app.js                     # Browser logic, quiz editing, image upload and Supabase calls
+├── config.js                  # Supabase URL + public publishable/anon key
+├── supabase-schema.sql        # Complete schema for a new installation (v1 + v2)
+├── supabase-migration-v2.sql  # Upgrade an existing v1 QuizDesk database to v2
+├── .nojekyll                  # Prevents GitHub Pages/Jekyll processing
 ├── .gitignore
 └── README.md
 ```
 
-## Setup guide
+## Setup and deployment
 
-### 1. Create a Supabase project
+### A. Create a Supabase project
 
-1. Open [Supabase](https://supabase.com/) and sign in or create an account.
-2. Create a new project and choose a strong database password. Save it securely.
-3. When the project is ready, open **Project Settings → API** (the exact dashboard labels may change).
-4. Copy the **Project URL**.
-5. Copy the **publishable key** (`sb_publishable_...`) or the legacy `anon` public key. Both are intended for use in a browser with proper Row Level Security. **Do not copy the `service_role` or secret key.**
+1. Open [Supabase](https://supabase.com/) and create a project.
+2. Save the database password securely.
+3. In **Project Settings → API** (dashboard labels may change), copy the **Project URL** and the **publishable key** (`sb_publishable_...`) or legacy public `anon` key.
+4. Do not use a `service_role` key, secret key or database password in browser JavaScript.
 
-### 2. Create the database
+### B. Set up the database
 
-1. In the Supabase project, open **SQL Editor**.
-2. Choose **New query**.
-3. Open the supplied `supabase-schema.sql` file, copy its entire contents and paste it into the SQL Editor.
-4. Run the query. It creates the tables, indexes, Row Level Security policies and database functions used by the website.
-5. Check the SQL Editor output for errors before continuing.
+**For a brand-new QuizDesk database:**
 
-Run the schema in a new/empty QuizDesk database. Do not repeatedly run an edited schema against a live database without first making a backup and reviewing the changes.
+1. Open Supabase **SQL Editor → New query**.
+2. Copy the entire contents of `supabase-schema.sql` into the editor.
+3. Run it and check that the query completes without errors.
 
-### 3. Create your teacher login
+**For an existing QuizDesk v1 database (the earlier GitHub Pages version):**
 
-Teacher accounts are created by the project owner; there is no public teacher-registration page.
+1. Make a database backup first.
+2. Open Supabase **SQL Editor → New query**.
+3. Copy the entire contents of `supabase-migration-v2.sql` into the editor.
+4. Run it once and check that it completes without errors.
+5. Do not run the v1 schema file again after migration. The migration adds revision tracking, image support, storage setup, updated RPC functions and policies without deleting previous submissions.
 
-1. In Supabase, open **Authentication → Users**.
-2. Choose **Add user** and create the teacher account with your email and a strong password. Confirm/verify the account in the dashboard if prompted.
-3. Open **SQL Editor** and run the following statement, replacing the email and display name with your own:
+The SQL migration creates the `quiz-question-images` public Storage bucket and teacher-only upload/update/delete policies automatically. No separate manual bucket creation is required.
+
+### C. Create your teacher account
+
+There is no public teacher-registration page. The project owner creates teacher accounts:
+
+1. In Supabase, open **Authentication → Users → Add user** and create an email/password account.
+2. Open **SQL Editor** and run this query after replacing the email and name:
 
 ```sql
 insert into public.teachers (user_id, display_name)
@@ -79,15 +77,12 @@ on conflict (user_id)
 do update set display_name = excluded.display_name;
 ```
 
-4. Confirm that one row was inserted or updated in `public.teachers`.
-5. Use this email and password on the QuizDesk Teacher sign-in screen.
+3. Check that one row was inserted/updated in `public.teachers`.
+4. Sign in to QuizDesk using that email and password.
 
-If the insert affects zero rows, check that the Authentication user exists and that the email matches exactly.
+### D. Connect the website
 
-### 4. Connect the website to Supabase
-
-1. Open `config.js` in a text editor.
-2. Replace the two placeholder values:
+Edit `config.js` and replace the placeholders:
 
 ```js
 window.QUIZDESK_CONFIG = {
@@ -96,131 +91,114 @@ window.QUIZDESK_CONFIG = {
 };
 ```
 
-3. Save the file. For example:
+Use your actual Project URL and browser-safe publishable/anon key. It is expected that this key is visible in the site's source. The database is protected by Row Level Security policies. Never put a service-role/secret key in this file.
 
-```js
-window.QUIZDESK_CONFIG = {
-  SUPABASE_URL: "https://abcdefghijk.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_your_public_key_here"
-};
-```
+### E. Test locally (optional)
 
-The values above are examples only; use the real values from your own Supabase project.
-
-The publishable/anon key is expected to be visible in browser source code. The database is protected by RLS policies in `supabase-schema.sql`. **Never put a `service_role`, secret or database password in `config.js`.**
-
-### 5. Test locally (optional but recommended)
-
-You do not need Python, Flask, npm or a build process. From the project directory, start any simple static file server. For example, if Python is installed:
+No Python, Flask, Node.js, npm or build process is required. You can run a local static server using Python if available:
 
 ```bash
 python -m http.server 8000
 ```
 
-Then open `http://localhost:8000` in a browser. You can also open `index.html` directly, but a local server is a better test because it behaves more like the published site.
+Then visit `http://localhost:8000/`. Confirm that the site says **Connected**, sign in as teacher and test creating/editing a quiz, reordering questions, uploading an image and submitting a student attempt.
 
-Check that:
-- The connection indicator says **Connected**.
-- The student page loads available quizzes (it will be empty until you publish one).
-- Teacher sign-in accepts your teacher credentials.
-- You can create and publish a sample quiz.
-- A student can submit an attempt, but the student confirmation page does not show a score.
-- The teacher dashboard shows the attempt, score, elapsed time and answer review.
+### F. Upload to GitHub
 
-### 6. Upload the project to GitHub
+1. Create a GitHub repository, such as `quizdesk`.
+2. Upload all project files to the repository root. In particular, keep `index.html` at the root.
+3. Commit to the `main` branch.
 
-1. Sign in to [GitHub](https://github.com/).
-2. Create a new repository, for example `quizdesk`.
-3. Upload the project files to the **repository root**. At minimum, include:
-   - `index.html`
-   - `styles.css`
-   - `app.js`
-   - `config.js`
-   - `.nojekyll`
-   - `supabase-schema.sql`
-   - `README.md`
-   - `.gitignore`
-4. Commit the files to the `main` branch.
-
-You may upload through GitHub's website, or use Git from the project folder:
+With Git:
 
 ```bash
 git init
 git add .
-git commit -m "Add QuizDesk static quiz application"
+git commit -m "Add QuizDesk v2"
 git branch -M main
 git remote add origin https://github.com/YOUR-USERNAME/quizdesk.git
 git push -u origin main
 ```
 
-Replace `YOUR-USERNAME` and `quizdesk` with your GitHub username and repository name.
+Or upload the extracted files using GitHub's web interface.
 
-### 7. Turn on GitHub Pages
+### G. Enable GitHub Pages
 
-1. Open your repository on GitHub.
-2. Go to **Settings → Pages**.
-3. Under **Build and deployment**, choose **Deploy from a branch**.
-4. Select branch **main** and folder **/ (root)**.
-5. Click **Save**.
-6. Wait for the deployment status to complete. Your address will look similar to:
+1. Open repository **Settings → Pages**.
+2. Under **Build and deployment**, choose **Deploy from a branch**.
+3. Select branch `main` and folder `/ (root)`.
+4. Click **Save**.
+5. The public URL will look like:
 
 ```text
 https://YOUR-USERNAME.github.io/quizdesk/
 ```
 
-Open the published address and confirm the connection indicator shows **Connected**. The root `index.html` file must remain at the repository root for this setup.
+### H. Configure Supabase Auth URLs
 
-### 8. Add the GitHub Pages URL to Supabase Auth settings
+In Supabase, open **Authentication → URL Configuration**:
 
-In Supabase, open **Authentication → URL Configuration** (the menu name may be slightly different).
+- Set **Site URL** to your published GitHub Pages URL.
+- Add the same address to the allowed **Redirect URLs** list.
 
-- Set **Site URL** to your published site URL, for example `https://YOUR-USERNAME.github.io/quizdesk/`.
-- Add that same site URL to the allowed **Redirect URLs** list.
+The current email/password login does not depend on an OAuth redirect, but setting the site URL is recommended for Auth configuration and future account features.
 
-This is a good production configuration for the authentication site. The current email/password login does not use an OAuth redirect flow, but the Site URL is still useful for Auth configuration and future account features.
+## Using the v2 features
 
-## How to use it
+### Edit a quiz
 
-1. Sign in at your published site and click **Teacher access**.
-2. Open **Create quiz**, enter the quiz title, add questions, fill all four options and select the correct answer.
-3. Leave **Publish immediately** enabled to make the quiz visible to students. Turn it off to save a draft.
-4. Share the published website URL with students.
-5. Open **Recent submissions** in the teacher dashboard to review work. The review page shows the contact information students provided, their elapsed time, score and the correct answer for each question.
+1. Sign in to the teacher dashboard.
+2. Find the quiz and click **Edit**.
+3. Change the title, description, publication status, questions, options, answer key or images.
+4. Save changes. The application creates a new revision; previous attempts are not altered.
 
-## Important limitations and operating notes
+### Reorder questions
 
-- **GitHub Pages is the website host; Supabase is the backend/database.** Both services are required for multiple students/devices to share quiz data. GitHub alone cannot securely provide the database or teacher login for this app.
-- Student access is intentionally anonymous. A student enters a name and ID but does not have a personal login. This is convenient for classroom use, but the site does not independently verify a student's identity. A student could enter another person's details.
-- Students can make more than one attempt. If you need one attempt per student, individual student accounts or a verified access code should be added in a later version.
-- A started but abandoned attempt is not shown in the teacher's submitted-attempt list. The server start timestamp is retained, but no score is created until submission. Because attempts are retained, a quiz with an attempt cannot be deleted; unpublish it instead.
-- The displayed timer is a browser display; the recorded elapsed time and score are calculated by the database. A browser tab being suspended may make the display tick less smoothly, but it does not reset the server start time.
-- Students do not see instant correctness feedback or their score. The teacher dashboard is the only interface that reads scores and answer keys.
-- Automatic email, SMS and WhatsApp notifications are not included. The teacher can use the contact information supplied by students to contact them separately.
-- The website uses the Supabase JavaScript client and Google Fonts from public CDNs, so visitors need an internet connection.
-- Before using the app for real assessments, test with a sample quiz and review your Supabase project's usage, backup and privacy settings. Do not collect unnecessary student personal information.
+Use the up-arrow and down-arrow controls in each question editor. The top question cannot move further up, and the bottom question cannot move further down. The order shown in the editor is the order students receive after saving.
+
+### Add a question image
+
+1. In a question editor, select an image file under **Question image**.
+2. Wait for the upload-complete message before saving.
+3. The preview appears in the teacher editor.
+4. If question text is also entered, students see the image first and the text underneath it. If no image is selected, no image placeholder is displayed. A question may also contain an image without text.
+5. Select **Remove image** to remove it from the question, then save the quiz.
+
+Images are uploaded to the Supabase `quiz-question-images` bucket. Previously used images are intentionally retained so that old submission revisions can still display their original images. If you repeatedly replace/remove images, unused files may remain in Storage and can be cleaned up manually only after confirming that no archived revision references them.
+
+## Important operating notes
+
+- Students are anonymous and enter their own name/student ID. This is convenient but does not independently verify student identity.
+- Students may submit multiple attempts. Each attempt is stored separately.
+- A question edit, image change, option change, answer-key change or reordering creates a new quiz revision. Attempts already started remain locked to the revision they began, and their old answer key remains available for teacher review.
+- Do not manually delete old question rows or answer keys from Supabase; old revisions are needed to review previous attempts.
+- Question images are publicly viewable through their image URLs because they are assessment content shown to students. Do not upload private or sensitive images.
+- Student pages never receive answer keys or scores. The database grades submissions and only the teacher can access result data.
+- Start timestamps and elapsed time are recorded/calculated by PostgreSQL.
+- Automatic email, SMS and WhatsApp notifications are not included. The teacher can contact students using the details they provide.
+- Before using this for real assessments, test with sample quizzes and review your Supabase backup, usage, privacy and access settings.
 
 ## Troubleshooting
 
-**“Setup required” / “Could not connect”**
-- Confirm `config.js` contains the correct Supabase Project URL and publishable/anon key.
-- Confirm there are no missing quotes or commas in `config.js`.
-- Confirm the Supabase project is running and the browser has internet access.
+**Question image upload fails**
+- Confirm `supabase-migration-v2.sql` was run successfully.
+- Confirm the signed-in user exists in `public.teachers`.
+- Confirm the file is JPG, PNG, WEBP or GIF and is 5 MB or smaller.
+- Confirm the Storage bucket `quiz-question-images` exists and the teacher upload policy is present.
 
-**The site loads but no quizzes appear**
-- Sign in as teacher and check that the quiz is published.
-- Confirm the quiz has at least one question.
-- Check the Supabase SQL Editor output and table contents.
+**Edit quiz or save changes fails**
+- Confirm the v2 migration has been run.
+- Check that the logged-in teacher owns the quiz.
+- Open the browser developer console and inspect the Supabase error message if needed.
+
+**The student list does not show the latest question order/content**
+- Save the edit, refresh the public quiz list and try again.
+- Hard-refresh the page to clear cached JavaScript/CSS.
 
 **Teacher login works but dashboard access is denied**
-- Confirm the signed-in email exists in Supabase Authentication → Users.
-- Confirm that user's UUID is present in `public.teachers`.
-- Confirm the schema SQL was run successfully.
+- Confirm the teacher auth user exists and its UUID is present in `public.teachers`.
 
-**Teacher can sign in but cannot see answer details**
-- Confirm the quiz was created through this app and that it has answer-key rows in `public.answer_keys`.
-- Confirm the logged-in user is the owner of the quiz.
-
-**A recent edit does not appear on GitHub Pages**
-- Confirm the modified files were committed and pushed to `main`.
-- Check the repository's Actions tab and Pages deployment status.
-- Try a hard refresh or a private browser window.
+**GitHub Pages shows an older version**
+- Confirm the updated files were committed to `main`.
+- Check the repository's Actions/Pages deployment status.
+- Hard-refresh the browser or test in a private window.
