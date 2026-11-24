@@ -15,6 +15,7 @@
     quizRows: [],
     attempts: [],
     draftQuestionCount: 0,
+    editingQuizId: null,
     toastHandle: null
   };
 
@@ -118,7 +119,7 @@
     container.innerHTML = '<div class="loading-card">Loading available quizzes…</div>';
     const { data, error } = await state.client
       .from('quizzes')
-      .select('id,title,description,created_at')
+      .select('id,title,description,created_at,current_revision')
       .eq('is_published', true)
       .order('created_at', { ascending: false });
 
@@ -133,10 +134,13 @@
     if (quizzes.length) {
       const ids = quizzes.map((quiz) => quiz.id);
       const { data: questionRows, error: questionError } = await state.client
-        .from('questions').select('quiz_id').in('quiz_id', ids);
+        .from('questions').select('quiz_id,revision').in('quiz_id', ids);
       if (!questionError) {
         countByQuiz = (questionRows || []).reduce((result, row) => {
-          result[row.quiz_id] = (result[row.quiz_id] || 0) + 1;
+          const quiz = quizzes.find((item) => item.id === row.quiz_id);
+          if (quiz && row.revision === quiz.current_revision) {
+            result[row.quiz_id] = (result[row.quiz_id] || 0) + 1;
+          }
           return result;
         }, {});
       }
@@ -166,8 +170,9 @@
 
     const { data: questions, error } = await state.client
       .from('questions')
-      .select('id,question_text,options,position')
+      .select('id,question_text,image_url,options,position,revision')
       .eq('quiz_id', quizId)
+      .eq('revision', quiz.current_revision)
       .order('position', { ascending: true });
 
     if (error) return showToast(friendlyError(error));
@@ -202,6 +207,7 @@
 
     const { data, error } = await state.client.rpc('start_quiz', {
       p_quiz_id: state.activeQuiz.id,
+      p_quiz_revision: state.activeQuiz.current_revision,
       p_student_name: name,
       p_student_code: studentCode,
       p_contact: contact
@@ -227,7 +233,8 @@
     container.innerHTML = state.activeQuestions.map((question, index) => `
       <article class="student-question-card" data-question-card="${escapeHtml(question.id)}">
         <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${index + 1} / ${state.activeQuestions.length}</span></div>
-        <h3>${escapeHtml(question.question_text)}</h3>
+        ${question.image_url ? `<img class="question-image student-question-image" src="${escapeHtml(question.image_url)}" alt="Question ${index + 1} image" loading="lazy">` : ''}
+        ${question.question_text ? `<h3>${escapeHtml(question.question_text)}</h3>` : ''}
         <div class="student-options">
           ${(question.options || []).map((option, optionIndex) => `
             <label class="student-option">
@@ -345,7 +352,7 @@
     $('teacher-submission-list').innerHTML = '<div class="loading-card">Loading submissions…</div>';
 
     const [quizResult, attemptResult] = await Promise.all([
-      state.client.from('quizzes').select('id,title,description,is_published,created_at').eq('created_by', state.user.id).order('created_at', { ascending: false }),
+      state.client.from('quizzes').select('id,title,description,is_published,created_at,current_revision').eq('created_by', state.user.id).order('created_at', { ascending: false }),
       state.client.from('attempts').select('id,quiz_id,student_name,student_code,contact,submitted_at,elapsed_seconds,score,total_questions').not('submitted_at', 'is', null).order('submitted_at', { ascending: false }).limit(100)
     ]);
 
@@ -381,6 +388,7 @@
           <span class="status-label ${quiz.is_published ? '' : 'draft'}">${quiz.is_published ? 'Published' : 'Draft'}</span>
         </div>
         <div class="item-actions" style="margin-top:10px;justify-content:flex-start">
+          <button class="small-action" type="button" data-edit-quiz="${escapeHtml(quiz.id)}">Edit</button>
           <button class="small-action" type="button" data-toggle-quiz="${escapeHtml(quiz.id)}">${quiz.is_published ? 'Unpublish' : 'Publish'}</button>
           <button class="small-action danger" type="button" data-delete-quiz="${escapeHtml(quiz.id)}">Delete</button>
         </div>
@@ -432,32 +440,171 @@
   }
 
   function openCreateQuiz() {
+    state.editingQuizId = null;
     state.draftQuestionCount = 0;
     $('quiz-title').value = '';
     $('quiz-description').value = '';
     $('quiz-publish').checked = true;
     $('question-builder').innerHTML = '';
+    $('quiz-form-title').textContent = 'Build a new quiz.';
+    $('quiz-form-subtitle').textContent = 'Add your questions and choose the correct option. Students will not see the answer key.';
+    $('save-quiz-button').innerHTML = 'Save quiz <span aria-hidden="true">→</span>';
     addQuestionEditor();
     setMessage('create-quiz-message', '');
     showView('create-quiz-view');
   }
 
-  function addQuestionEditor() {
-    if (state.draftQuestionCount >= 100) return showToast('A quiz can contain up to 100 questions.');
+  async function openEditQuiz(quizId) {
+    const quiz = state.quizRows.find((row) => row.id === quizId);
+    if (!quiz) return showToast('This quiz could not be found. Refresh the dashboard and try again.');
+
+    showView('create-quiz-view');
+    $('quiz-form-title').textContent = 'Edit your quiz.';
+    $('quiz-form-subtitle').textContent = 'Changes create a new version. Previous student submissions remain attached to the version they attempted.';
+    $('save-quiz-button').innerHTML = 'Save changes <span aria-hidden="true">→</span>';
+    $('question-builder').innerHTML = '<div class="loading-card">Loading quiz questions…</div>';
+    setMessage('create-quiz-message', '');
+
+    const quizResult = await state.client.from('quizzes')
+      .select('id,title,description,is_published,current_revision')
+      .eq('id', quizId).eq('created_by', state.user.id).maybeSingle();
+
+    if (quizResult.error || !quizResult.data) {
+      showView('teacher-view');
+      return showToast(friendlyError(quizResult.error, 'Could not load this quiz for editing.'));
+    }
+
+    const fullQuiz = quizResult.data;
+    const questionResult = await state.client.from('questions')
+      .select('id,question_text,image_url,options,position,revision,answer_keys(correct_option_index)')
+      .eq('quiz_id', quizId).eq('revision', fullQuiz.current_revision)
+      .order('position', { ascending: true });
+
+    if (questionResult.error) {
+      showView('teacher-view');
+      return showToast(friendlyError(questionResult.error, 'Could not load this quiz for editing.'));
+    }
+    state.editingQuizId = quizId;
+    state.draftQuestionCount = 0;
+    $('quiz-title').value = fullQuiz.title || '';
+    $('quiz-description').value = fullQuiz.description || '';
+    $('quiz-publish').checked = Boolean(fullQuiz.is_published);
+    $('question-builder').innerHTML = '';
+
+    (questionResult.data || []).forEach((question) => {
+      const keyData = question.answer_keys;
+      const correctIndex = Array.isArray(keyData) ? keyData[0]?.correct_option_index : keyData?.correct_option_index;
+      addQuestionEditor({
+        question_text: question.question_text || '',
+        image_url: question.image_url || '',
+        options: question.options || [],
+        correct_option_index: Number.isInteger(correctIndex) ? correctIndex : 0
+      });
+    });
+
+    if (!questionResult.data?.length) addQuestionEditor();
+    updateQuestionEditorLabels();
+  }
+
+  function addQuestionEditor(question = {}) {
+    if (document.querySelectorAll('[data-question-editor]').length >= 100) return showToast('A quiz can contain up to 100 questions.');
     const index = state.draftQuestionCount;
     state.draftQuestionCount += 1;
     const editor = document.createElement('div');
     editor.className = 'question-editor';
     editor.dataset.questionEditor = String(index);
+    editor.dataset.imageUrl = question.image_url || '';
+    const optionValues = Array.from({ length: 4 }, (_, optionIndex) => question.options?.[optionIndex] ?? '');
     editor.innerHTML = `
-      <div class="question-editor-head"><strong>Question ${index + 1}</strong><button type="button" class="remove-question" data-remove-question="${index}" ${index === 0 ? 'disabled' : ''}>Remove</button></div>
-      <label class="question-text-field">Question text<textarea rows="2" maxlength="2000" data-question-text required placeholder="Write your question here…"></textarea></label>
+      <div class="question-editor-head">
+        <strong>Question ${index + 1}</strong>
+        <div class="question-editor-tools">
+          <button type="button" class="move-question" data-move-question="up" aria-label="Move question up" title="Move up">↑</button>
+          <button type="button" class="move-question" data-move-question="down" aria-label="Move question down" title="Move down">↓</button>
+          <button type="button" class="remove-question" data-remove-question="${index}" ${index === 0 ? 'disabled' : ''}>Remove</button>
+        </div>
+      </div>
+      <label class="question-text-field">Question text <span class="optional-label">Optional when an image is added</span><textarea rows="3" maxlength="2000" data-question-text placeholder="Write your question here…"></textarea></label>
+      <div class="question-image-editor">
+        <label>Question image <span class="optional-label">Optional · PNG, JPG, WEBP or GIF · Up to 5 MB</span><input type="file" data-question-image accept="image/jpeg,image/png,image/webp,image/gif"></label>
+        <p class="image-upload-status" data-image-status role="status"></p>
+        <div class="image-preview-wrap ${question.image_url ? '' : 'hidden'}" data-image-preview-wrap>
+          <img data-image-preview ${question.image_url ? `src="${escapeHtml(question.image_url)}"` : ''} alt="Question image preview">
+          <button type="button" class="small-action danger" data-remove-image>Remove image</button>
+        </div>
+      </div>
       <div class="options-grid">
         ${LETTERS.slice(0, 4).map((letter, optionIndex) => `<label class="option-editor"><span class="option-letter">${letter}</span><textarea rows="2" maxlength="500" data-option-index="${optionIndex}" required placeholder="Option ${letter}"></textarea></label>`).join('')}
       </div>
       <label class="correct-answer-field">Correct answer<select data-correct-index>${LETTERS.slice(0, 4).map((letter, optionIndex) => `<option value="${optionIndex}">${letter}</option>`).join('')}</select></label>`;
+
+    editor.querySelector('[data-question-text]').value = question.question_text || '';
+    editor.querySelectorAll('[data-option-index]').forEach((field) => {
+      field.value = optionValues[Number(field.dataset.optionIndex)];
+    });
+    editor.querySelector('[data-correct-index]').value = String(question.correct_option_index ?? 0);
     $('question-builder').appendChild(editor);
     updateQuestionEditorLabels();
+  }
+
+  async function uploadQuestionImage(editor, fileInput) {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      fileInput.value = '';
+      return showToast('Choose a JPG, PNG, WEBP or GIF image.');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      fileInput.value = '';
+      return showToast('The image must be 5 MB or smaller.');
+    }
+    if (!state.client || !state.user) return showToast('Sign in as a teacher before uploading images.');
+
+    const status = editor.querySelector('[data-image-status]');
+    const previewWrap = editor.querySelector('[data-image-preview-wrap]');
+    const preview = editor.querySelector('[data-image-preview]');
+    editor.dataset.uploading = 'true';
+    status.textContent = 'Uploading image…';
+    fileInput.disabled = true;
+
+    const extensionByType = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif'
+    };
+    const extension = extensionByType[file.type];
+    const uniquePart = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const path = `${state.user.id}/${uniquePart}.${extension}`;
+    const { error } = await state.client.storage.from('quiz-question-images').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type
+    });
+
+    editor.dataset.uploading = 'false';
+    fileInput.disabled = false;
+    if (error) {
+      status.textContent = '';
+      fileInput.value = '';
+      return showToast(friendlyError(error, 'The image could not be uploaded. Check the database migration and storage permissions.'));
+    }
+
+    const { data } = state.client.storage.from('quiz-question-images').getPublicUrl(path);
+    editor.dataset.imageUrl = data.publicUrl;
+    preview.src = data.publicUrl;
+    previewWrap.classList.remove('hidden');
+    status.textContent = 'Image uploaded. It will appear above the question text.';
+  }
+
+  function removeQuestionImage(editor) {
+    editor.dataset.imageUrl = '';
+    const fileInput = editor.querySelector('[data-question-image]');
+    if (fileInput) fileInput.value = '';
+    editor.querySelector('[data-image-preview]').removeAttribute('src');
+    editor.querySelector('[data-image-preview-wrap]').classList.add('hidden');
+    editor.querySelector('[data-image-status]').textContent = 'Image removed. Save the quiz to apply this change.';
   }
 
   function updateQuestionEditorLabels() {
@@ -466,51 +613,86 @@
       editor.querySelector('.question-editor-head strong').textContent = `Question ${index + 1}`;
       const remove = editor.querySelector('[data-remove-question]');
       remove.disabled = editors.length === 1;
+      const moveUp = editor.querySelector('[data-move-question="up"]');
+      const moveDown = editor.querySelector('[data-move-question="down"]');
+      moveUp.disabled = index === 0;
+      moveDown.disabled = index === editors.length - 1;
     });
     $('question-count').textContent = `${editors.length} question${editors.length === 1 ? '' : 's'}`;
+  }
+
+  function moveQuestion(editor, direction) {
+    const container = $('question-builder');
+    if (direction === 'up' && editor.previousElementSibling) {
+      container.insertBefore(editor, editor.previousElementSibling);
+    } else if (direction === 'down' && editor.nextElementSibling) {
+      container.insertBefore(editor.nextElementSibling, editor);
+    }
+    updateQuestionEditorLabels();
   }
 
   async function saveQuiz(event) {
     event.preventDefault();
     if (!state.client || !state.user) return;
     const title = $('quiz-title').value.trim();
-    const description = $('quiz-description').value.trim();
+    const description = $('quiz-description').value;
     const questionEditors = [...document.querySelectorAll('[data-question-editor]')];
     const questions = [];
 
     for (let index = 0; index < questionEditors.length; index += 1) {
       const editor = questionEditors[index];
-      // Keep user-entered spaces and line breaks. Normalize Windows line endings only.
+      if (editor.dataset.uploading === 'true') {
+        setMessage('create-quiz-message', `Please wait for the image upload in Question ${index + 1} to finish.`);
+        return;
+      }
+      // Preserve all intentional spaces and line breaks. Do not trim stored question/options text.
       const questionText = editor.querySelector('[data-question-text]').value.replace(/\r\n?/g, '\n');
+      const imageUrl = editor.dataset.imageUrl || '';
       const options = [...editor.querySelectorAll('[data-option-index]')]
         .map((field) => field.value.replace(/\r\n?/g, '\n'));
-      if (!questionText.trim() || options.some((option) => !option.trim())) {
-        setMessage('create-quiz-message', `Please complete the question and all four options for Question ${index + 1}.`);
+      if ((!questionText.trim() && !imageUrl) || options.some((option) => !option.trim())) {
+        setMessage('create-quiz-message', `Question ${index + 1} needs text or an image, and all four answer options must be completed.`);
         editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
       questions.push({
         question_text: questionText,
+        image_url: imageUrl,
         options,
         correct_option_index: Number(editor.querySelector('[data-correct-index]').value)
       });
     }
 
+    if (!title) {
+      setMessage('create-quiz-message', 'Please enter a quiz title.');
+      $('quiz-title').focus();
+      return;
+    }
+
     const button = $('save-quiz-button');
     button.disabled = true;
-    button.textContent = 'Saving…';
-    setMessage('create-quiz-message', 'Saving quiz and answer key…', true);
-    const { data, error } = await state.client.rpc('create_quiz', {
+    button.textContent = state.editingQuizId ? 'Saving changes…' : 'Saving…';
+    setMessage('create-quiz-message', state.editingQuizId ? 'Saving a new version of your quiz…' : 'Saving quiz and answer key…', true);
+
+    const isEditing = Boolean(state.editingQuizId);
+    const rpcName = isEditing ? 'update_quiz' : 'create_quiz';
+    const rpcArgs = {
       p_title: title,
       p_description: description,
       p_is_published: $('quiz-publish').checked,
       p_questions: questions
-    });
+    };
+    if (isEditing) rpcArgs.p_quiz_id = state.editingQuizId;
+
+    const { error } = await state.client.rpc(rpcName, rpcArgs);
     button.disabled = false;
-    button.innerHTML = 'Save quiz <span aria-hidden="true">→</span>';
+    button.innerHTML = isEditing ? 'Save changes <span aria-hidden="true">→</span>' : 'Save quiz <span aria-hidden="true">→</span>';
     if (error) return setMessage('create-quiz-message', friendlyError(error));
 
-    showToast($('quiz-publish').checked ? 'Quiz created and published.' : 'Quiz saved as a draft.');
+    state.editingQuizId = null;
+    showToast(isEditing
+      ? 'Quiz updated. Previous submissions remain unchanged.'
+      : ($('quiz-publish').checked ? 'Quiz created and published.' : 'Quiz saved as a draft.'));
     showView('teacher-view');
     await loadTeacherDashboard();
   }
@@ -521,7 +703,7 @@
 
     const { data: attempt, error: attemptError } = await state.client
       .from('attempts')
-      .select('id,quiz_id,student_name,student_code,contact,started_at,submitted_at,elapsed_seconds,score,total_questions')
+      .select('id,quiz_id,quiz_revision,student_name,student_code,contact,started_at,submitted_at,elapsed_seconds,score,total_questions')
       .eq('id', attemptId).maybeSingle();
     if (attemptError || !attempt) {
       $('submission-detail-content').innerHTML = `<div class="empty-state">${escapeHtml(friendlyError(attemptError, 'Submission could not be found.'))}</div>`;
@@ -530,7 +712,7 @@
 
     const [quizResult, questionResult, answerResult] = await Promise.all([
       state.client.from('quizzes').select('id,title').eq('id', attempt.quiz_id).maybeSingle(),
-      state.client.from('questions').select('id,question_text,options,position,answer_keys(correct_option_index)').eq('quiz_id', attempt.quiz_id).order('position'),
+      state.client.from('questions').select('id,question_text,image_url,options,position,answer_keys(correct_option_index)').eq('quiz_id', attempt.quiz_id).eq('revision', attempt.quiz_revision).order('position'),
       state.client.from('answers').select('question_id,selected_option_index,is_correct').eq('attempt_id', attempt.id)
     ]);
 
@@ -549,7 +731,8 @@
       return `
         <article class="review-answer">
           <div class="student-question-top"><span>QUESTION ${index + 1}</span><span>${submitted?.is_correct ? 'Correct' : 'Incorrect'}</span></div>
-          <h3>${escapeHtml(question.question_text)}</h3>
+          ${question.image_url ? `<img class="question-image review-question-image" src="${escapeHtml(question.image_url)}" alt="Question ${index + 1} image" loading="lazy">` : ''}
+          ${question.question_text ? `<h3>${escapeHtml(question.question_text)}</h3>` : ''}
           ${(question.options || []).map((option, optionIndex) => {
             const isCorrect = optionIndex === correctIndex;
             const isChosen = optionIndex === submitted?.selected_option_index;
@@ -595,8 +778,10 @@
     $('open-create-quiz-button').addEventListener('click', openCreateQuiz);
     $('refresh-submissions-button').addEventListener('click', refreshTeacherData);
     $('teacher-quiz-list').addEventListener('click', (event) => {
+      const edit = event.target.closest('[data-edit-quiz]');
       const toggle = event.target.closest('[data-toggle-quiz]');
       const remove = event.target.closest('[data-delete-quiz]');
+      if (edit) openEditQuiz(edit.dataset.editQuiz);
       if (toggle) toggleQuiz(toggle.dataset.toggleQuiz);
       if (remove) deleteQuiz(remove.dataset.deleteQuiz);
     });
@@ -615,10 +800,18 @@
     $('create-back-button').addEventListener('click', () => showView('teacher-view'));
     $('add-question-button').addEventListener('click', addQuestionEditor);
     $('question-builder').addEventListener('click', (event) => {
+      const move = event.target.closest('[data-move-question]');
       const remove = event.target.closest('[data-remove-question]');
+      const removeImage = event.target.closest('[data-remove-image]');
+      if (move) return moveQuestion(move.closest('[data-question-editor]'), move.dataset.moveQuestion);
+      if (removeImage) return removeQuestionImage(removeImage.closest('[data-question-editor]'));
       if (!remove || remove.disabled) return;
       remove.closest('[data-question-editor]').remove();
       updateQuestionEditorLabels();
+    });
+    $('question-builder').addEventListener('change', (event) => {
+      if (!event.target.matches('[data-question-image]')) return;
+      uploadQuestionImage(event.target.closest('[data-question-editor]'), event.target);
     });
     $('create-quiz-form').addEventListener('submit', saveQuiz);
     $('quiz-back-button').addEventListener('click', openHome);
