@@ -275,3 +275,66 @@ textarea { resize: vertical; line-height: 1.6; }
   .submitted-meta { flex-direction: column; gap: 6px; }
   .site-footer { padding: 20px 18px 26px; }
 }
+
+
+/* QuizDesk v2: question images, question-order controls, and image previews. */
+.question-editor-head { align-items: center; }
+.question-editor-tools { display: flex; align-items: center; gap: 6px; }
+.move-question {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e1e8e0;
+  border-radius: 6px;
+  color: #52665a;
+  background: #fff;
+  font-size: 14px;
+  line-height: 1;
+}
+.move-question:hover:not(:disabled) { border-color: #9db9a2; background: #f1f6f1; }
+.move-question:disabled { opacity: .32; cursor: not-allowed; }
+.question-text-field .optional-label,
+.question-image-editor .optional-label { margin-left: 5px; }
+.question-image-editor {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px dashed #d8e2d7;
+  border-radius: 7px;
+  background: #fff;
+}
+.question-image-editor > label { display: block; color: #56665c; font-size: 10px; font-weight: 700; }
+.question-image-editor input[type="file"] {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #e3eae2;
+  border-radius: 6px;
+  color: #738077;
+  background: #fbfcfa;
+  font: inherit;
+  font-size: 10px;
+}
+.image-upload-status { min-height: 0; margin: 6px 0 0; color: #64806b; font-size: 9px; }
+.image-upload-status:empty { display: none; }
+.image-preview-wrap { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.image-preview-wrap img { display: block; width: auto; max-width: min(100%, 360px); max-height: 210px; border: 1px solid #e5ebe4; border-radius: 6px; object-fit: contain; background: #f8faf7; }
+.question-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 430px;
+  margin: 0 0 18px;
+  border: 1px solid #e7ece6;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #f8faf7;
+}
+.student-question-image { margin-top: 2px; }
+.review-question-image { max-height: 360px; margin-bottom: 14px; }
+@media (max-width: 650px) {
+  .question-editor-head { align-items: flex-start; }
+  .question-editor-tools { flex-wrap: wrap; justify-content: flex-end; }
+  .question-image { max-height: 300px; }
+}
