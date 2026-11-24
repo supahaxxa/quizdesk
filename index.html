@@ -115,8 +115,8 @@
     <section id="create-quiz-view" class="page-view hidden">
       <button class="back-link" id="create-back-button" type="button">← Back to dashboard</button>
       <div class="eyebrow"><span class="eyebrow-line"></span> NEW ASSESSMENT</div>
-      <h1 class="subpage-title">Build a <span>new quiz.</span></h1>
-      <p class="section-subtitle">Add your questions and choose the correct option. Students will not see the answer key.</p>
+      <h1 class="subpage-title" id="quiz-form-title">Build a <span>new quiz.</span></h1>
+      <p class="section-subtitle" id="quiz-form-subtitle">Add your questions and choose the correct option. Students will not see the answer key.</p>
       <form id="create-quiz-form">
         <div class="form-card">
           <div class="form-card-heading"><span class="step-number">01</span><div><h3>Quiz details</h3><p>Give your assessment a clear title.</p></div></div>
@@ -124,7 +124,7 @@
           <label class="publish-toggle"><input id="quiz-publish" type="checkbox" checked><span class="toggle-ui"></span><span><strong>Publish immediately</strong><small>Students can see and start this quiz as soon as it is saved.</small></span></label>
         </div>
         <div class="form-card questions-form-card">
-          <div class="form-card-heading"><span class="step-number">02</span><div><h3>Questions</h3><p>Add multiple-choice questions and set their answer keys.</p></div><span class="question-count" id="question-count">1 question</span></div>
+          <div class="form-card-heading"><span class="step-number">02</span><div><h3>Questions</h3><p>Add MCQs, include optional images, and use the arrow controls to change question order.</p></div><span class="question-count" id="question-count">1 question</span></div>
           <div id="question-builder"></div>
           <button class="button button-outline add-question-button" id="add-question-button" type="button">＋ Add another question</button>
         </div>
